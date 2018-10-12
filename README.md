@@ -47,3 +47,19 @@ console.log(randomPhrase(12))
 verifyPhrase("violin oblivion cylinder list disarray wobbly fastball showplace oasis patronize septic spearhead", 12)
 ```
 
+# browser wasm
+
+Note that if using as a Nodejs module, 'Crypto' will be missing.
+
+Using [wasm-pack](https://github.com/rustwasm/wasm-pack)
+```bash
+$ wasm-pack build --target browser --scope parity
+```
+Target brawser eg with webpack
+```
+$ cd pkg
+$ npm install webpack webpack-cli --save-dev
+$ npx webpack
+```
+Sample index.js in pkg should display word in browser console (need to serve dist from a test server with support for wasm mime-type).
+
