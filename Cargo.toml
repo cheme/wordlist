@@ -7,7 +7,7 @@ authors = ["Parity Technologies <admin@parity.io>"]
 repository = "https://github.com/paritytech/wordlist"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 lazy_static = "1.0"

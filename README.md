@@ -53,6 +53,8 @@ Note that if using as a Nodejs module, 'Crypto' will be missing.
 
 Using [wasm-pack](https://github.com/rustwasm/wasm-pack)
 ```bash
+$ cargo build --release --target wasm32-release-release
+$ #wasm-bindgen ./target/wasm32-unknown-unknown/release/parity_wordlist.wasm --out-dir pkg
 $ wasm-pack build --target browser --scope parity
 ```
 Target brawser eg with webpack
