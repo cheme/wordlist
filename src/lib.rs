@@ -22,62 +22,92 @@
 extern crate lazy_static;
 
 extern crate itertools;
-extern crate rand;
 
 #[cfg(target_arch = "wasm32")]
-extern crate web_sys;
-#[cfg(target_arch = "wasm32")]
 extern crate wasm_bindgen;
-#[cfg(all(test, target_arch = "wasm32"))]
-extern crate wasm_bindgen_test;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
+//#[cfg(all(test, target_arch = "wasm32"))]
+//extern crate wasm_bindgen_test;
 
 use std::fmt;
 use std::collections::HashSet;
-use itertools::Itertools;
-#[cfg(not(target_arch = "wasm32"))]
-use rand::{Rng, OsRng};
-#[cfg(target_arch = "wasm32")]
-use web_sys::{Crypto};
+
+pub use random_phrase::random_phrase;
 
 /// The list of dictionary words.
 // the wordlist JSON also happens to be valid Rust syntax for an array constant.
 pub const WORDS: &'static [&'static str] = &include!("../res/wordlist.json");
 
 #[cfg(not(target_arch = "wasm32"))]
-/// Generate a string which is a random phrase of a number of lowercase words.
-///
-/// `words` is the number of words, chosen from a dictionary of 7,530. An value of
-/// 12 gives 155 bits of entropy (almost saturating address space); 20 gives 258 bits
-/// which is enough to saturate 32-byte key space
-pub fn random_phrase(no_of_words: usize) -> String {
-	let mut rng = OsRng::new().expect("Not able to operate without random source.");
-	(0..no_of_words).map(|_| rng.choose(WORDS).unwrap()).join(" ")
+mod random_phrase {
+	extern crate rand;
+	use self::rand::{Rng, OsRng};
+	use itertools::Itertools;
+	use ::WORDS;
+	/// Generate a string which is a random phrase of a number of lowercase words.
+	///
+	/// `words` is the number of words, chosen from a dictionary of 7,530. An value of
+	/// 12 gives 155 bits of entropy (almost saturating address space); 20 gives 258 bits
+	/// which is enough to saturate 32-byte key space
+	pub fn random_phrase(no_of_words: usize) -> String {
+		let mut rng = OsRng::new().expect("Not able to operate without random source.");
+		(0..no_of_words).map(|_| rng.choose(WORDS).unwrap()).join(" ")
+	}
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "browser-wasm"))]
+mod random_phrase {
+	extern crate web_sys;
+	use self::web_sys::{Crypto};
+	use ::WORDS;
+	use wasm_bindgen::prelude::*;
+	use itertools::Itertools;
+
+	#[wasm_bindgen]
+	/// Generate a string which is a random phrase of a number of lowercase words.
+	///
+	/// `words` is the number of words, chosen from a dictionary of 7,530. An value of
+	/// 12 gives 155 bits of entropy (almost saturating address space); 20 gives 258 bits
+	/// which is enough to saturate 32-byte key space
+	pub fn random_phrase(no_of_words: usize) -> String {
+		let nb_words = WORDS.len();
+		use std::mem;
+		let mut buf = [0u8; mem::size_of::<u16>()];
+		let crypto: Crypto = self::web_sys::window().unwrap().crypto().unwrap();
+		let mut choose = || {
+			crypto.get_random_values_with_u8_array(&mut buf[..]).expect("Not able to operate without random source.");
+			// unsafe transmute more efficient but not worth this usecase, and not
+			// adding an additional deps for it.
+			let rand_val = ((buf[0] as usize) + (buf[1] as usize) * 2^8) % nb_words;
+			WORDS[rand_val as usize]
+		};
+		(0..no_of_words).map(|_| choose()).join(" ")
+	}
+
+}
+
+#[cfg(all(target_arch = "wasm32", not(feature = "browser-wasm")))]
+mod random_phrase {
+	use wasm_bindgen::prelude::*;
+
+	#[wasm_bindgen]
+	pub fn random_phrase(no_of_words: usize) -> String {
+    // TODO thereis a crate to use non crypto rand on node : we could use it for test purpose only
+    // TODO substrate/pwasm extrinsec with other name if needed
+    unimplemented!()
+  }
 }
 
 #[cfg(target_arch = "wasm32")]
-#[wasm_bindgen]
-/// Generate a string which is a random phrase of a number of lowercase words.
-///
-/// `words` is the number of words, chosen from a dictionary of 7,530. An value of
-/// 12 gives 155 bits of entropy (almost saturating address space); 20 gives 258 bits
-/// which is enough to saturate 32-byte key space
-pub fn random_phrase(no_of_words: usize) -> String {
-	let nb_words = WORDS.len();
-	use std::mem;
-	let mut buf = [0u8; mem::size_of::<u16>()];
-	let crypto: Crypto = web_sys::window().unwrap().crypto().unwrap();
-	let mut choose = || {
-		crypto.get_random_values_with_u8_array(&mut buf[..]).expect("Not able to operate without random source.");
-		// unsafe transmute more efficient but not worth this usecase, and not
-		// adding an additional deps for it.
-		let rand_val = ((buf[0] as usize) + (buf[1] as usize) * 2^8) % nb_words;
-		WORDS[rand_val as usize]
-	};
-	(0..no_of_words).map(|_| choose()).join(" ")
-}
+/// simple function reexport with bindgen
+mod wasm_reexport {
+	use wasm_bindgen::prelude::*;
+  use wasm_bindgen::JsValue;
 
+	#[wasm_bindgen]
+  pub fn validate_phrase(phrase: &str, expected_no_of_words: usize) -> Result<(), JsValue> {
+    ::validate_phrase(phrase, expected_no_of_words).map_err(|e|format!("{:?}",&e).into())
+  }
+}
 
 /// Phrase Validation Error
 #[derive(Debug, Clone, PartialEq)]
@@ -126,16 +156,17 @@ pub mod tests {
 	#[cfg(all(test, target_arch = "wasm32"))]
 	use wasm_bindgen_test::*;
 
-	use super::{validate_phrase, random_phrase, Error};
+	use super::{validate_phrase, Error};
+	use super::random_phrase::random_phrase;
 
-	#[wasm_bindgen_test]
+	//#[wasm_bindgen_test]
 	#[test]
 	fn should_produce_right_number_of_words() {
 		let p = random_phrase(10);
 		assert_eq!(p.split(" ").count(), 10);
 	}
 
-	#[wasm_bindgen_test]
+	//#[wasm_bindgen_test]
 	#[test]
 	fn should_not_include_carriage_return() {
 		let p = random_phrase(10);
